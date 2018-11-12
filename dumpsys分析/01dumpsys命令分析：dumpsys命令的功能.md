@@ -50,3 +50,5 @@
 * 获取设置应用的内存信息
 
 `adb shell dumpsys meminfo com.android.settings`
+
+https://juejin.im/entry/5b47301d6fb9a04f9c43afd3
