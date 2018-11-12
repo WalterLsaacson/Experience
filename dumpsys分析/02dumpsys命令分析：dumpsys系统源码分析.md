@@ -8,7 +8,7 @@
 
 配置文件摘要如下：
 
-```
+```bp
 //
 // Executable
 //
@@ -29,13 +29,15 @@ srcs参数表示指定的第一个文件是main.cpp文件
 #### 可执行文件与系统服务打交道
 
 - dumpsys工具的流程就是调用ServiceManager服务的listServices查询系统注册的所有服务，然后嗲用checkservice接口获取服务的远程binder代理对象，最终调用服务的dump函数并传递相应的参数用来打印该服务的特定信息
-- 我们简单梳理一下主体流程
+- 过程涉及进程间的binder通信，pipe管道通信
+- 我们来看一下代码
 
 1.   main.cpp
 
-```
+```c++
 //argc参数数量，argv参数数组索引0表示参数名
 int main(int argc, char* const argv[]) {
+    //adb通过tcp协议与手机adbd进程进行通信，这里防止手机端产生僵尸进程
     signal(SIGPIPE, SIG_IGN);
     //获取IServiceManager对象
     sp<IServiceManager> sm = defaultServiceManager();
@@ -55,7 +57,7 @@ int main(int argc, char* const argv[]) {
 
 2. dumpsys.cpp
 
-```
+```c++
 int Dumpsys::main(int argc, char* const argv[]) {
     //定义局部变量将参与到后续的显示工作中
     Vector<String16> services;
@@ -201,7 +203,7 @@ int Dumpsys::main(int argc, char* const argv[]) {
             std::chrono::duration<double> elapsedDuration;
             size_t bytesWritten = 0;
             status_t status =
-            //将dump结果写入标准输出
+            //读取结果
                 writeDump(STDOUT_FILENO, serviceName, std::chrono::milliseconds(timeoutArgMs),
                           asProto, elapsedDuration, bytesWritten);
 
@@ -225,11 +227,11 @@ int Dumpsys::main(int argc, char* const argv[]) {
 }
 ```
 
-3. 开线程dumps
+3. 开线程dumpsys
 
-```
+```c++
 status_t Dumpsys::startDumpThread(const String16& serviceName, const Vector<String16>& args) {
-    //调用servicemanager的checkservice方法获取相应service的binder代理对象
+    //1. 调用servicemanager的checkservice方法获取相应service的binder代理对象
     sp<IBinder> service = sm_->checkService(serviceName);
     if (service == nullptr) {
         aerr << "Can't find service: " << serviceName << endl;
@@ -237,26 +239,24 @@ status_t Dumpsys::startDumpThread(const String16& serviceName, const Vector<Stri
     }
 
     int sfd[2];
-    //打开管道
+    //2. 系统调用创建一个简单的管道，sfd[0]用于读取管道，sfd[1]用于写入管道
     if (pipe(sfd) != 0) {
         aerr << "Failed to create pipe to dump service info for " << serviceName << ": "
              << strerror(errno) << endl;
         return -errno;
     }
 
+    //3. 管道通信的输入和输出均使用fd进行包装
     redirectFd_ = unique_fd(sfd[0]);
     unique_fd remote_end(sfd[1]);
     sfd[0] = sfd[1] = -1;
 
     // dump blocks until completion, so spawn a thread..
     activeThread_ = std::thread([=, remote_end{std::move(remote_end)}]() mutable {
-    //获取dumpsys信息
+    //4. 调用service的dump方法，上层通过进程binder类实现该功能
         int err = service->dump(remote_end.get(), args);
 
-        // It'd be nice to be able to close the remote end of the socketpair before the dump
-        // call returns, to terminate our reads if the other end closes their copy of the
-        // file descriptor, but then hangs for some reason. There doesn't seem to be a good
-        // way to do this, though.
+        // It'd be nice to be able to close the remote end of the socketpair before the dump call returns, to terminate our reads if the other end closes their copy of the file descriptor, but then hangs for some reason. There doesn't seem to be a good way to do this, though.
         remote_end.reset();
 
         if (err != 0) {
@@ -266,5 +266,68 @@ status_t Dumpsys::startDumpThread(const String16& serviceName, const Vector<Stri
     });
     return OK;
 }
+
+status_t Dumpsys::writeDump(int fd, const String16& serviceName, std::chrono::milliseconds timeout,
+                            bool asProto, std::chrono::duration<double>& elapsedDuration,
+                            size_t& bytesWritten) const {
+    //...
+    //5. 系统调用poll读取管道数据
+    struct pollfd pfd = {.fd = serviceDumpFd, .events = POLLIN};
+    while (true) {
+        // Wrap this in a lambda so that TEMP_FAILURE_RETRY recalculates the timeout.
+        auto time_left_ms = [end]() {
+            auto now = std::chrono::steady_clock::now();
+            auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - now);
+            return std::max(diff.count(), 0ll);
+        };
+        int rc = TEMP_FAILURE_RETRY(poll(&pfd, 1, time_left_ms()));
+        if (rc < 0) {
+            aerr << "Error in poll while dumping service " << serviceName << " : "
+                 << strerror(errno) << endl;
+            status = -errno;
+            break;
+        } else if (rc == 0) {
+            status = TIMED_OUT;
+            break;
+        }
+
+        char buf[4096];
+        //6. 读取管道数据，TEMP_FAILURE_RETRY宏将在失败后重试
+        rc = TEMP_FAILURE_RETRY(read(redirectFd_.get(), buf, sizeof(buf)));
+        if (rc < 0) {
+            aerr << "Failed to read while dumping service " << serviceName << ": "
+                 << strerror(errno) << endl;
+            status = -errno;
+            break;
+        } else if (rc == 0) {
+            // EOF.
+            break;
+        }
+        //7. 写数据到fd
+        if (!WriteFully(fd, buf, rc)) {
+            aerr << "Failed to write while dumping service " << serviceName << ": "
+                 << strerror(errno) << endl;
+            status = -errno;
+            break;
+        }
+        totalBytes += rc;
+    }
+    return status;
+}
 ```
 
+4. 过程中的binder调用
+5. framework层系统服务
+
+系统服务通过继承binder类并重写其dump方法，完成最终获取framework信息的步骤
+
+```java
+@Override
+public void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
+    PriorityDump.dump(mPriorityDumper, fd, pw, args);
+}
+
+//最终调用
+// Wrapper function to print out debug data filtered by specified arguments.
+    private void doDump(FileDescriptor fd, PrintWriter pw, String[] args, boolean useProto)
+```
