@@ -2,10 +2,7 @@
 
 将包含基础知识和相关模块的源码分析：
 
-- [dumpsys模块](https://github.com/WalterLsaacson/Experience)
-- 编译系统
-
-
+- [dumpsys模块](https://github.com/WalterLsaacson/Experience/tree/master/dumpsys%E5%88%86%E6%9E%90)
 
 
 
