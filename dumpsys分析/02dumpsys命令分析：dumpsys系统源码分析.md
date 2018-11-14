@@ -26,6 +26,31 @@ cc_binary {
 
 srcs参数表示指定的第一个文件是main.cpp文件
 
+#### dumpsys -l 是怎样列举的
+
+通过dumpsys -l 罗列出来的名称是与framework层的系统服务一一对应的
+
+```
+Such as:
+activity ActivityManagerService
+window   WindowManagerSewrvice
+```
+
+这些对应关系是在framework的SystemServiceRegistry类中进行注册的：
+
+```java
+ //注册ActivityManagerService服务，将保存在一个map中，键为Context中定义的字段，值为相应的系统服务
+ registerService(Context.ACTIVITY_SERVICE, ActivityManager.class,
+                new CachedServiceFetcher<ActivityManager>() {
+            ...
+            }});
+
+ registerService(Context.ALARM_SERVICE, AlarmManager.class,
+                new CachedServiceFetcher<AlarmManager>() {
+            ...
+            }});
+```
+
 #### 可执行文件与系统服务打交道
 
 - dumpsys工具的流程就是调用ServiceManager服务的listServices查询系统注册的所有服务，然后嗲用checkservice接口获取服务的远程binder代理对象，最终调用服务的dump函数并传递相应的参数用来打印该服务的特定信息
@@ -317,7 +342,10 @@ status_t Dumpsys::writeDump(int fd, const String16& serviceName, std::chrono::mi
 ```
 
 4. 过程中的binder调用
-5. framework层系统服务
+
+这一块抽出去在后边的文章专门进行讨论。
+
+4. framework层系统服务
 
 系统服务通过继承binder类并重写其dump方法，完成最终获取framework信息的步骤
 
