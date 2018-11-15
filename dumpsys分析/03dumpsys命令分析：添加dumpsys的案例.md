@@ -53,6 +53,7 @@ registerService(Context.RECOVERY_SERVICE, RecoverySystem.class,
                         if (!setupOrClearBcbInternal(true, command)) {
                             return;
                         }
+                        // 创建执行重启至recovery模式的runnable
                         Runnable runnable = new Runnable() {
                             @Override
                             public void run() {
@@ -60,7 +61,7 @@ registerService(Context.RECOVERY_SERVICE, RecoverySystem.class,
                             }
                         };
 
-                        // ShutdownThread must run on a looper capable of displaying the UI.
+                        // 需要在UI线程中进行该操作，这里获取UiThread的handler然后将执行操作的runnable发送至UiThread的消息队列
                         Message msg = Message.obtain(UiThread.getHandler(), runnable);
                         msg.setAsynchronous(true);
                         UiThread.getHandler().sendMessage(msg);
@@ -71,9 +72,9 @@ registerService(Context.RECOVERY_SERVICE, RecoverySystem.class,
                 }
                 return;
             } else {
-                // --help
-                pw.pringln("Usage: 'dumpsys recovery reset-factory'");
-                pw.pringln("Restore the phone to factory Settings");
+                // 参数不正确时打印帮助信息
+                pw.println("Usage: 'dumpsys recovery reset-factory'");
+                pw.println("Restore the phone to factory Settings");
             }
         }
     }
