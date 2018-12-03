@@ -72,3 +72,9 @@ cc_binary {
 - defaults 此模块将继承名为dumpsys_defaults的父模块
 - srcs表示执行此命令将被执行的文件
 
+#### 更多字段说明
+
+http://note.qidong.name/demo/soong_build/#collapse1733
+
+
+
