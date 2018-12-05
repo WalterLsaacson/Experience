@@ -15,11 +15,11 @@ else
 endif
 ```
 
-2. build\core\Makefile文件进行属性的解析
+2. build\core\Makefile文件进行mk文件的解析及相关属性文件的生成
 
 ```makefile
 # -----------------------------------------------------------------
-# vendor default.prop
+# vendor default.prop 以生成此文件为例
 INSTALLED_VENDOR_DEFAULT_PROP_TARGET :=
 ifdef property_overrides_split_enabled
 #1.表明最终生成的文件在vendor\default.prop
@@ -30,36 +30,62 @@ ALL_DEFAULT_INSTALLED_MODULES += $(INSTALLED_VENDOR_DEFAULT_PROP_TARGET)
 #2.1collapse-pairs函数去除空格
 FINAL_VENDOR_DEFAULT_PROPERTIES += \
     $(call collapse-pairs, $(PRODUCT_DEFAULT_PROPERTY_OVERRIDES))
-#2.2uniq-pairs-by-first-component过滤重复的属性设置，以第一个为准
+#2.uniq-pairs-by-first-component过滤重复的属性设置，以首次设置为准
 FINAL_VENDOR_DEFAULT_PROPERTIES := $(call uniq-pairs-by-first-component, \
     $(FINAL_VENDOR_DEFAULT_PROPERTIES),=)
 
 $(INSTALLED_VENDOR_DEFAULT_PROP_TARGET): $(INSTALLED_DEFAULT_PROP_TARGET)
 	@echo Target buildinfo: $@
+	#创建文件
 	@mkdir -p $(dir $@)
+	#文件头
 	$(hide) echo "#" > $@; \
 	        echo "# ADDITIONAL VENDOR DEFAULT PROPERTIES" >> $@; \
 	        echo "#" >> $@;
 	#3.逐行遍历添加属性
 	$(hide) $(foreach line,$(FINAL_VENDOR_DEFAULT_PROPERTIES), \
 		echo "$(line)" >> $@;)
-    #4.调用该脚本进行一些属性规则的限制，下文会进一步阐述
+    #4.调用该脚本进行一些属性规则的限制，其中会根据debuggable状态进行usb属性的配置，下文会详细阐述
 	$(hide) build/tools/post_process_props.py $@
 
 endif  # property_overrides_split_enabled
 ```
 
-3. 
-4. 特别的说明
+3. build/tools/post_process_props.py脚本进行USBdebug版本配置
+
+```python
+# Put the modifications that you need to make into the /system/etc/prop.default into this function. The prop object has get(name) and put(name,value) methods.
+def mangle_default_prop(prop):
+  #主要是在USBdebug模式下，会配置ro.debuggable属性为1，则将adb调试默认打开
+  # If ro.debuggable is 1, then enable adb on USB by default
+  # (this is for userdebug builds)
+  if prop.get("ro.debuggable") == "1":
+    val = prop.get("persist.sys.usb.config")
+    if "adb" not in val:
+      if val == "":
+        val = "adb"
+      else:
+        val = val + ",adb"
+      prop.put("persist.sys.usb.config", val)
+  # UsbDeviceManager expects a value here.  If it doesn't get it, it will
+  # default to "adb". That might not the right policy there, but it's better
+  # to be explicit.
+  #这里意思是如果本身没有配置persist.sys.usb.config属性，我们将它配置为调试模式的机制是不可取的
+  if not prop.get("persist.sys.usb.config"):
+    prop.put("persist.sys.usb.config", "none");
+```
+
+这个脚本只对debug版本生效，user版本不必关注
+
+特别的说明：
 
 ```makefile
 BUILDINFO_SH := build/tools/buildinfo.sh
 VENDOR_BUILDINFO_SH := build/tools/vendor_buildinfo.sh
+属性系统中生成vendor/build.prop和system/build.prop的主要内容
 ```
 
-在system\build.prop和vendor\build.prop文件生成的位置，上述两个脚本将会参与这个过程，将其中的属性值写入文件
-
-
+到此编译期的工作就做完了，将生成usb相关配置属性persist.sys.usb.config到vendor/default.prop文件中
 
 #### 运行期：
 
