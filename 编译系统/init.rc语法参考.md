@@ -6,3 +6,5 @@ on property:sys.usb.configfs=1
 ```
 
 表示一旦属性sys.usb.configfs的值被设置为1，将执行之后的语句，这里是启动adbd进程
+
+请参考：https://www.jianshu.com/p/d08e1affd5ec
