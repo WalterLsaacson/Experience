@@ -1,0 +1,95 @@
+ 特许权限白名单要求
+
+过去，设备实现人员几乎无法控制可以向特权应用授予哪些签名|特许权限。 特权应用是位于系统映像上 /system/priv-app 目录下的系统应用。
+
+从 Android 8.0 开始，所有特权应用均必须显式加入到 /etc/permissions 目录下的系统配置 XML 文件的白名单中。 如果不这样做，则设备可以启动，但设备实现将无法通过 CTS。
+添加白名单
+
+应用的权限白名单可列在位于 frameworks/base/etc/permissions 目录下的单个或多个 XML 文件中，如下所示：
+
+    /etc/permissions/privapp-permissions-<OEM_NAME>.xml
+    /etc/permissions/privapp-permissions-<DEVICE_NAME>.xml。 
+
+对于如何组织内容，没有任何严格的规则，只要将 /system/priv-app 下的所有应用均列入白名单，设备实现人员就可以自行决定如何组织内容。例如，Google 会针对由 Google 开发的所有特权应用提供一个白名单。
+
+建议使用以下组织方式：
+
+    对于已包含在 AOSP 树中的应用，将其权限列在以下文件中：/etc/permissions/privapp-permissions-platform.xml
+    对于 Google 应用，将其权限列在以下文件中：/etc/permissions/privapp-permissions-google.xml
+    对于其他应用，使用以下格式的文件： /etc/permissions/privapp-permissions-<device_name>.xml
+
+白名单生成工具
+
+可使用 AOSP 中提供的命令行工具在以下位置自动生成系统映像上提供的针对所有应用的白名单：
+
+development/tools/privapp_permissions/privapp_permissions.py
+    
+
+要生成特定于设备的 privapp-permissions.xml 的初始版本，请完成以下步骤：
+
+    编译系统映像，如下所示：
+
+    $ . build/envsetup.sh
+    $ lunch product_name
+    $ make -j
+
+    运行以下工具以生成一个 privapp-permissions.xml 文件，该文件会列出需要列入白名单的所有签名|特许权限。
+
+    $ development/tools/privapp_permissions/privapp_permissions.py
+
+
+    此工具会打印可在 /etc/permissions 下用作单个文件或拆分为多个文件的 XML 内容。
+
+    如果设备已在 /etc/permissions 目录下包含白名单，则该工具将打印出差异内容，也就是说只打印缺少的需要列入白名单的签名|特许权限。这对审核也很有用，当添加新版本的应用时，该工具将检测所需的其他权限。
+    将生成的文件复制到 /etc/permissions 目录下，系统将在这里读取该文件（在启动过程中）。
+
+白名单格式
+
+    由于实现已在 AOSP 中，因此只需进行自定义即可。
+    AOSP 树中包含的应用的权限已在 /etc/permissions/privapp-permissions-platform.xml 下列入白名单
+
+<!--
+    This XML file declares which signature|privileged permissions should be granted to privileged
+    applications that come with the platform
+    -->
+    <permissions>
+        <privapp-permissions package="com.android.backupconfirm">
+            <permission name="android.permission.BACKUP"/>
+            <permission name="android.permission.CRYPT_KEEPER"/>
+        </privapp-permissions>
+        <privapp-permissions package="com.android.cellbroadcastreceiver">
+            <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+            <permission name="android.permission.MANAGE_USERS"/>
+            <permission name="android.permission.MODIFY_PHONE_STATE"/>
+            <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+            <permission name="android.permission.RECEIVE_EMERGENCY_BROADCAST"/>
+        </privapp-permissions>
+    ...
+
+启用日志以查找缺少的权限
+
+在启动新设备时，我们建议首先启用过渡日志模式，如下所示：
+
+ro.control_privapp_permission=log
+
+违规行为将在日志文件中予以报告，但所授予的权限仍将有效。这样可使设备处于工作状态，同时又能提供违规行为列表。
+
+错误消息格式如下：
+
+PackageManager: Privileged permission {PERMISSION_NAME} for package {PACKAGE_NAME} - not in privapp-permissions whitelist
+
+所有违规行为均必须通过列入白名单来予以解决。否则，设备将无法通过 CTS 测试。
+针对白名单的 CTS 测试
+
+如果您的设备实现包含未显示在 /etc/permissions. 下的白名单中的特权应用，则该实现不会通过 CTS 测试。
+
+The PrivappPermissionsTest.java 测试会强制执行签名|特许权限白名单，具体方式如下：
+
+    报告已向 CTS 日志授予的权限。
+    确保所有特许权限只向在 <privapp-permissions>, 中声明的应用授予，即如果特权应用请求获取未列入白名单的签名|特许权限或系统未授予的白名单权限，则请求会失败。
+
+运行时强制执行白名单
+
+白名单列好后，可通过设置版本属性 ro.control_privapp_permission=enforce 来启用运行时强制执行。
+
+注意：无论 ro.control_privapp_permission 属性状态如何，只有已针对所有特权应用将特许权限正确列入白名单的设备才能通过 CTS 测试。
