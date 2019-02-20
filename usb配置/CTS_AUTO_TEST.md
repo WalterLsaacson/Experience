@@ -42,11 +42,8 @@ echo 'guanyin1010' | sudo -S ./flash_tool -d $FLASH_DA -s $FLASH_SCATTER -c down
 #set -e
 #set -x
 
-
 #prepare environment
 source /etc/profile
-
-
 function prepare {
     #save adb devices serial numbers to adbs.txt
     rm -f adbs.txt
@@ -92,7 +89,7 @@ if [ ! -d "../jenkins_subplan_items" ]
 then
     mkdir ../jenkins_subplan_items
 fi
-                
+
 cp -f $newest_result ../jenkins_subplan_items/
 cd ../jenkins_subplan_items
 
@@ -219,7 +216,6 @@ then
     if [ 7 -eq $FRE ]
     then
         prepare
-
         #./cts-tradefed command
         run_item
         echo -1 > ../tools/frefile
@@ -241,3 +237,20 @@ else
 fi
 ```
 
+* 脚本涉及补充
+
+1. /etc/profile添加环境变量
+
+```shell
+export PATH=/home/lava/Android/Sdk/platform-tools:$PATH
+export PATH=/home/lava/Android/Sdk/tools:$PATH
+export PATH=/home/lava/Android/Sdk/build-tools/28.0.0:$PATH
+
+#export JAVA_HOME=/usr/java/jdk1.7
+export JAVA_HOME=/usr/java/jdk1.8
+export PATH=$JAVA_HOME/bin:$PATH
+export CLASSPATH=.:JAVA_HOME/bin/dt.jar:$JAVA_HOME/lib/tools.jar
+export APE_API_KEY=/usr/java/gts-windriver-public.json
+```
+
+2. 
