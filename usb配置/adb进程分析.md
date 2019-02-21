@@ -216,6 +216,19 @@ static void update_sys_usb_config() {
 ```
 至此属性值已经通过配置文件成功加载到系统属性服务运行期间了，接下来上层将读取该属性进行相关工作
 
+3.adbd进程默认禁用
+
+```shell
+# adbd is controlled via property triggers in init.<platform>.usb.rc
+service adbd /system/bin/adbd --root_seclabel=u:r:su:s0
+    class core
+    socket adbd stream 660 system system
+    disabled
+    seclabel u:r:adbd:s0
+```
+
+
+
 遗留问题：1.属性服务的启动方式，init进程通过什么方式进行启动 2.上层服务和属性服务的进程进行通信的方式
 
 #### 上层系统服务根据属性进行配置
