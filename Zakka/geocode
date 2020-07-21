@@ -1,0 +1,14 @@
+def geocode(lng, lat):
+    address = ""
+    url = 'https://restapi.amap.com/v3/geocode/regeo?parameters'
+    params = {
+        'location': ('%s,%s' % (lng, lat)),
+        'key': '0cd712dd3f63a1d08562588f7e7bf2a7',
+    }
+    try:
+        res = requests.get(url, params, timeout=10)
+        data = res.json()
+        address = data['regeocode']['formatted_address']
+    except Exception as e:
+        print(e)
+    return address
